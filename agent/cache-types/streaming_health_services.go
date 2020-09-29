@@ -123,6 +123,7 @@ func (s *healthViewState) Update(events []*pbsubscribe.Event) error {
 			delete(s.state, id)
 		}
 	}
+	// TODO: replace with a no-op filter instead of a conditional
 	if s.filter != nil {
 		filtered, err := s.filter.Execute(s.state)
 		if err != nil {
