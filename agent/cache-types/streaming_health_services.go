@@ -58,11 +58,30 @@ func (c *StreamingHealthServices) Fetch(opts cache.FetchOptions, req cache.Reque
 		r.Topic = pbsubscribe.Topic_ServiceHealthConnect
 	}
 
-	view, err := NewMaterializedViewFromFetch(c, opts, r)
+	view, err := c.getMaterializedView(opts, r)
 	if err != nil {
 		return cache.FetchResult{}, err
 	}
 	return view.Fetch(opts)
+}
+
+func (c *StreamingHealthServices) getMaterializedView(opts cache.FetchOptions, r Request) (*MaterializedView, error) {
+	if opts.LastResult != nil && opts.LastResult.State != nil {
+		return opts.LastResult.State.(*MaterializedView), nil
+	}
+
+	state, err := newHealthViewState(r.Filter)
+	if err != nil {
+		return nil, err
+	}
+	view := NewMaterializedViewFromFetch(ViewDeps{
+		State:   state,
+		Client:  c.client,
+		Logger:  c.logger,
+		Request: r,
+	})
+	go view.run()
+	return view, nil
 }
 
 // SupportsBlocking implements cache.Type
@@ -70,8 +89,7 @@ func (c *StreamingHealthServices) SupportsBlocking() bool {
 	return true
 }
 
-// NewMaterializedView implements StreamingCacheType
-func (c *StreamingHealthServices) NewMaterializedViewState(req Request) (MaterializedViewState, error) {
+func newHealthViewState(filterExpr string) (MaterializedViewState, error) {
 	s := &healthViewState{state: make(map[string]structs.CheckServiceNode)}
 
 	// We apply filtering to the raw CheckServiceNodes before we are done mutating
@@ -79,7 +97,7 @@ func (c *StreamingHealthServices) NewMaterializedViewState(req Request) (Materia
 	// later. Because the state is just a map of those types, we can simply run
 	// that map through filter and it will remove any entries that don't match.
 	var err error
-	s.filter, err = bexpr.CreateFilter(req.Filter, nil, s.state)
+	s.filter, err = bexpr.CreateFilter(filterExpr, nil, s.state)
 	return s, err
 }
 

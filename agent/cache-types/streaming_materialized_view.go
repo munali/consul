@@ -22,12 +22,6 @@ const (
 	SubscribeBackoffMax = 60 * time.Second
 )
 
-// StreamingClient is the interface we need from the gRPC client stub. Separate
-// interface simplifies testing.
-type StreamingClient interface {
-	Subscribe(ctx context.Context, in *pbsubscribe.SubscribeRequest, opts ...grpc.CallOption) (pbsubscribe.StateChangeSubscription_SubscribeClient, error)
-}
-
 // MaterializedViewState is the interface used to manage they type-specific
 // materialized view logic.
 type MaterializedViewState interface {
@@ -51,14 +45,6 @@ type MaterializedViewState interface {
 }
 
 type Filter func(seq interface{}) (interface{}, error)
-
-// StreamingCacheType is the interface a cache-type needs to implement to make
-// use of streaming as the transport for updates from the server.
-type StreamingCacheType interface {
-	NewMaterializedViewState(req Request) (MaterializedViewState, error)
-	StreamingClient() StreamingClient
-	Logger() hclog.Logger
-}
 
 // temporary is a private interface as used by net and other std lib packages to
 // show error types represent temporary/recoverable errors.
@@ -99,9 +85,7 @@ type Request struct {
 type MaterializedView struct {
 	// Properties above the lock are immutable after the view is constructed in
 	// NewMaterializedViewFromFetch and must not be modified.
-	client     StreamingClient
-	logger     hclog.Logger
-	req        Request
+	deps       ViewDeps
 	ctx        context.Context
 	cancelFunc func()
 
@@ -116,6 +100,19 @@ type MaterializedView struct {
 	err          error
 }
 
+type ViewDeps struct {
+	State   MaterializedViewState
+	Client  StreamingClient
+	Logger  hclog.Logger
+	Request Request
+}
+
+// StreamingClient is the interface we need from the gRPC client stub. Separate
+// interface simplifies testing.
+type StreamingClient interface {
+	Subscribe(ctx context.Context, in *pbsubscribe.SubscribeRequest, opts ...grpc.CallOption) (pbsubscribe.StateChangeSubscription_SubscribeClient, error)
+}
+
 // NewMaterializedViewFromFetch retrieves an existing view from the cache result
 // state if one exists, otherwise creates a new one. Note that the returned view
 // MUST have Close called eventually to avoid leaking resources. Typically this
@@ -123,26 +120,11 @@ type MaterializedView struct {
 // the cache evicts the result. If the view is not returned in a result state
 // though Close must be called some other way to avoid leaking the goroutine and
 // memory.
-func NewMaterializedViewFromFetch(
-	t StreamingCacheType,
-	opts cache.FetchOptions,
-	subReq Request,
-) (*MaterializedView, error) {
-	if opts.LastResult != nil && opts.LastResult.State != nil {
-		return opts.LastResult.State.(*MaterializedView), nil
-	}
-
-	state, err := t.NewMaterializedViewState(subReq)
-	if err != nil {
-		return nil, err
-	}
-
+func NewMaterializedViewFromFetch(deps ViewDeps) *MaterializedView {
 	ctx, cancel := context.WithCancel(context.Background())
 	v := &MaterializedView{
-		state:      state,
-		client:     t.StreamingClient(),
-		logger:     t.Logger(),
-		req:        subReq,
+		deps:       deps,
+		state:      deps.State,
 		ctx:        ctx,
 		cancelFunc: cancel,
 		// Allow first retry without wait, this is important and we rely on it in
@@ -150,14 +132,8 @@ func NewMaterializedViewFromFetch(
 		retryWaiter: lib.NewRetryWaiter(1, 0, SubscribeBackoffMax,
 			lib.NewJitterRandomStagger(100)),
 	}
-
-	// TODO: move this
-	// Run init now otherwise there is a race between run() and a call to Fetch
-	// which expects a view state to exist.
-	go v.run()
-
 	v.reset()
-	return v, nil
+	return v
 }
 
 // Close implements io.Close and discards view state and stops background view
@@ -203,8 +179,11 @@ func (v *MaterializedView) run() {
 
 			// Exponential backoff to avoid hammering servers if they are closing
 			// conns because of overload or resetting based on errors.
-			v.logger.Error("subscribe call failed", "err", err, "topic", v.req.Topic,
-				"key", v.req.Key, "failure_count", failures)
+			v.deps.Logger.Error("subscribe call failed",
+				"err", err,
+				"topic", v.deps.Request.Topic,
+				"key", v.deps.Request.Key,
+				"failure_count", failures)
 
 			select {
 			case <-v.ctx.Done():
@@ -224,7 +203,7 @@ func (v *MaterializedView) runSubscription() error {
 	defer cancel()
 
 	// Copy the request template
-	req := v.req
+	req := v.deps.Request
 
 	v.l.Lock()
 
@@ -239,7 +218,7 @@ func (v *MaterializedView) runSubscription() error {
 
 	v.l.Unlock()
 
-	s, err := v.client.Subscribe(ctx, &req.SubscribeRequest)
+	s, err := v.deps.Client.Subscribe(ctx, &req.SubscribeRequest)
 	if err != nil {
 		return err
 	}
