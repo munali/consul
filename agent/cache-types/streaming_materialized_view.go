@@ -31,16 +31,6 @@ type StreamingClient interface {
 // MaterializedViewState is the interface used to manage they type-specific
 // materialized view logic.
 type MaterializedViewState interface {
-	// InitFilter is called once when the view is constructed if the subscription
-	// has a non-empty Filter argument. The implementor is expected to create a
-	// *bexpr.Filter and store it locally so it can be used to filter events
-	// and/or results. Ideally filtering should occur inside `Update` calls such
-	// that we don't store objects in the view state that are just filtered when
-	// the result is returned, however in some cases it might not be possible and
-	// the type may choose to store the whole view and only apply filtering in the
-	// Result method just before returning a result.
-	InitFilter(expression string) error
-
 	// Update is called when one or more events are received. The first call will
 	// include _all_ events in the initial snapshot which may be an empty set.
 	// Subsequent calls will contain one or more update events in the order they
@@ -55,12 +45,17 @@ type MaterializedViewState interface {
 	// populating. This allows implementations to not worry about maintaining
 	// indexes seen during Update.
 	Result(index uint64) (interface{}, error)
+
+	// Reset the state.
+	Reset()
 }
+
+type Filter func(seq interface{}) (interface{}, error)
 
 // StreamingCacheType is the interface a cache-type needs to implement to make
 // use of streaming as the transport for updates from the server.
 type StreamingCacheType interface {
-	NewMaterializedViewState() MaterializedViewState
+	NewMaterializedViewState(req Request) (MaterializedViewState, error)
 	StreamingClient() StreamingClient
 	Logger() hclog.Logger
 }
@@ -90,7 +85,6 @@ type Request struct {
 	pbsubscribe.SubscribeRequest
 	// Filter is a bexpr filter expression that is used to filter events on the
 	// client side.
-	// TODO: is this used?
 	Filter string
 }
 
@@ -104,8 +98,7 @@ type Request struct {
 // the scenes until the cache result is discarded when TTL expires.
 type MaterializedView struct {
 	// Properties above the lock are immutable after the view is constructed in
-	// MaterializedViewFromFetch and must not be modified.
-	typ        StreamingCacheType
+	// NewMaterializedViewFromFetch and must not be modified.
 	client     StreamingClient
 	logger     hclog.Logger
 	req        Request
@@ -121,42 +114,50 @@ type MaterializedView struct {
 	updateCh     chan struct{}
 	retryWaiter  *lib.RetryWaiter
 	err          error
-	fatalErr     error
 }
 
-// MaterializedViewFromFetch retrieves an existing view from the cache result
+// NewMaterializedViewFromFetch retrieves an existing view from the cache result
 // state if one exists, otherwise creates a new one. Note that the returned view
 // MUST have Close called eventually to avoid leaking resources. Typically this
 // is done automatically if the view is returned in a cache.Result.State when
 // the cache evicts the result. If the view is not returned in a result state
 // though Close must be called some other way to avoid leaking the goroutine and
 // memory.
-func MaterializedViewFromFetch(
+func NewMaterializedViewFromFetch(
 	t StreamingCacheType,
 	opts cache.FetchOptions,
 	subReq Request,
-) *MaterializedView {
-	if opts.LastResult == nil || opts.LastResult.State == nil {
-		ctx, cancel := context.WithCancel(context.Background())
-		v := &MaterializedView{
-			typ:        t,
-			client:     t.StreamingClient(),
-			logger:     t.Logger(),
-			req:        subReq,
-			ctx:        ctx,
-			cancelFunc: cancel,
-			// Allow first retry without wait, this is important and we rely on it in
-			// tests.
-			retryWaiter: lib.NewRetryWaiter(1, 0, SubscribeBackoffMax,
-				lib.NewJitterRandomStagger(100)),
-		}
-		// Run init now otherwise there is a race between run() and a call to Fetch
-		// which expects a view state to exist.
-		v.reset()
-		go v.run()
-		return v
+) (*MaterializedView, error) {
+	if opts.LastResult != nil && opts.LastResult.State != nil {
+		return opts.LastResult.State.(*MaterializedView), nil
 	}
-	return opts.LastResult.State.(*MaterializedView)
+
+	state, err := t.NewMaterializedViewState(subReq)
+	if err != nil {
+		return nil, err
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	v := &MaterializedView{
+		state:      state,
+		client:     t.StreamingClient(),
+		logger:     t.Logger(),
+		req:        subReq,
+		ctx:        ctx,
+		cancelFunc: cancel,
+		// Allow first retry without wait, this is important and we rely on it in
+		// tests.
+		retryWaiter: lib.NewRetryWaiter(1, 0, SubscribeBackoffMax,
+			lib.NewJitterRandomStagger(100)),
+	}
+
+	// TODO: move this
+	// Run init now otherwise there is a race between run() and a call to Fetch
+	// which expects a view state to exist.
+	go v.run()
+
+	v.reset()
+	return v, nil
 }
 
 // Close implements io.Close and discards view state and stops background view
@@ -340,21 +341,7 @@ func (v *MaterializedView) reset() {
 	v.l.Lock()
 	defer v.l.Unlock()
 
-	v.state = v.typ.NewMaterializedViewState()
-	if v.req.Filter != "" {
-		if err := v.state.InitFilter(v.req.Filter); err != nil {
-			// If this errors we are stuck - it's fatal for the whole request as it
-			// means there was a bug or an invalid filter string we couldn't parse.
-			// Stop the whole view by closing it and cancelling context, but also set
-			// the error internally so that Fetch calls can return a meaningful error
-			// and not just "context cancelled".
-			v.fatalErr = err
-			if v.cancelFunc != nil {
-				v.cancelFunc()
-			}
-			return
-		}
-	}
+	v.state.Reset()
 	v.notifyUpdateLocked()
 	// Always start from zero when we have a new state so we load a snapshot from
 	// the servers.
@@ -448,12 +435,6 @@ func (v *MaterializedView) Fetch(opts cache.FetchOptions) (cache.FetchResult, er
 			return result, nil
 
 		case <-v.ctx.Done():
-			v.l.Lock()
-			err := v.fatalErr
-			v.l.Unlock()
-			if err != nil {
-				return result, err
-			}
 			return result, v.ctx.Err()
 		}
 	}

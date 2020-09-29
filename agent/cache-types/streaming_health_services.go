@@ -58,7 +58,10 @@ func (c *StreamingHealthServices) Fetch(opts cache.FetchOptions, req cache.Reque
 		r.Topic = pbsubscribe.Topic_ServiceHealthConnect
 	}
 
-	view := MaterializedViewFromFetch(c, opts, r)
+	view, err := NewMaterializedViewFromFetch(c, opts, r)
+	if err != nil {
+		return cache.FetchResult{}, err
+	}
 	return view.Fetch(opts)
 }
 
@@ -68,10 +71,16 @@ func (c *StreamingHealthServices) SupportsBlocking() bool {
 }
 
 // NewMaterializedView implements StreamingCacheType
-func (c *StreamingHealthServices) NewMaterializedViewState() MaterializedViewState {
-	return &healthViewState{
-		state: make(map[string]structs.CheckServiceNode),
-	}
+func (c *StreamingHealthServices) NewMaterializedViewState(req Request) (MaterializedViewState, error) {
+	s := &healthViewState{state: make(map[string]structs.CheckServiceNode)}
+
+	// We apply filtering to the raw CheckServiceNodes before we are done mutating
+	// state in Update to save from storing stuff in memory we'll only filter
+	// later. Because the state is just a map of those types, we can simply run
+	// that map through filter and it will remove any entries that don't match.
+	var err error
+	s.filter, err = bexpr.CreateFilter(req.Filter, nil, s.state)
+	return s, err
 }
 
 // StreamingClient implements StreamingCacheType
@@ -90,22 +99,9 @@ func (c *StreamingHealthServices) Logger() hclog.Logger {
 // (IndexedCheckServiceNodes) and update it in place for each event - that
 // involves re-sorting each time etc. though.
 type healthViewState struct {
-	state  map[string]structs.CheckServiceNode
+	state map[string]structs.CheckServiceNode
+	// TODO: test case with filter
 	filter *bexpr.Filter
-}
-
-// InitFilter implements MaterializedViewState
-func (s *healthViewState) InitFilter(expression string) error {
-	// We apply filtering to the raw CheckServiceNodes before we are done mutating
-	// state in Update to save from storing stuff in memory we'll only filter
-	// later. Because the state is just a map of those types, we can simply run
-	// that map through filter and it will remove any entries that don't match.
-	filter, err := bexpr.CreateFilter(expression, nil, s.state)
-	if err != nil {
-		return err
-	}
-	s.filter = filter
-	return nil
 }
 
 // Update implements MaterializedViewState
@@ -141,10 +137,15 @@ func (s *healthViewState) Update(events []*pbsubscribe.Event) error {
 func (s *healthViewState) Result(index uint64) (interface{}, error) {
 	var result structs.IndexedCheckServiceNodes
 	// Avoid a nil slice if there are no results in the view
+	// TODO: why this ^
 	result.Nodes = structs.CheckServiceNodes{}
 	for _, node := range s.state {
 		result.Nodes = append(result.Nodes, node)
 	}
 	result.Index = index
 	return &result, nil
+}
+
+func (s *healthViewState) Reset() {
+	s.state = make(map[string]structs.CheckServiceNode)
 }
