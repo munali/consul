@@ -744,6 +744,15 @@ func (txn *Txn) Changes() Changes {
 			// case it's different. Note that m is not a pointer so we are not
 			// modifying the txn.changeSet here - it's already a copy.
 			m.Before = mi.firstBefore
+
+			// Edge case - if the object was inserted and then eventually deleted in
+			// the same transaction, then the net affect on that key is a no-op. Don't
+			// emit a mutation with nil for before and after as it's meaningless and
+			// might violate expectations and cause a panic in code that assumes at
+			// least one must be set.
+			if m.Before == nil && m.After == nil {
+				continue
+			}
 			cs = append(cs, m)
 		}
 	}
@@ -794,4 +803,27 @@ func (r *radixIterator) Next() interface{} {
 		return nil
 	}
 	return value
+}
+
+// Snapshot creates a snapshot of the current state of the transaction.
+// Returns a new read-only transaction or nil if the transaction is already
+// aborted or committed.
+func (txn *Txn) Snapshot() *Txn {
+	if txn.rootTxn == nil {
+		return nil
+	}
+
+	snapshot := &Txn{
+		db:      txn.db,
+		rootTxn: txn.rootTxn.Clone(),
+	}
+
+	// Commit sub-transactions into the snapshot
+	for key, subTxn := range txn.modified {
+		path := indexPath(key.Table, key.Index)
+		final := subTxn.CommitOnly()
+		snapshot.rootTxn.Insert(path, final)
+	}
+
+	return snapshot
 }
