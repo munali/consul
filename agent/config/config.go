@@ -214,6 +214,7 @@ type Config struct {
 	RaftTrailingLogs                 *int                     `json:"raft_trailing_logs,omitempty" hcl:"raft_trailing_logs" mapstructure:"raft_trailing_logs"`
 	ReconnectTimeoutLAN              *string                  `json:"reconnect_timeout,omitempty" hcl:"reconnect_timeout" mapstructure:"reconnect_timeout"`
 	ReconnectTimeoutWAN              *string                  `json:"reconnect_timeout_wan,omitempty" hcl:"reconnect_timeout_wan" mapstructure:"reconnect_timeout_wan"`
+	AdvertiseReconnectTimeout        *string                  `json:"advertise_reconnect_timeout,omitempty" hcl:"advertise_reconnect_timeout" mapstructure:"advertise_reconnect_timeout"`
 	RejoinAfterLeave                 *bool                    `json:"rejoin_after_leave,omitempty" hcl:"rejoin_after_leave" mapstructure:"rejoin_after_leave"`
 	RetryJoinIntervalLAN             *string                  `json:"retry_interval,omitempty" hcl:"retry_interval" mapstructure:"retry_interval"`
 	RetryJoinIntervalWAN             *string                  `json:"retry_interval_wan,omitempty" hcl:"retry_interval_wan" mapstructure:"retry_interval_wan"`

@@ -995,6 +995,8 @@ func newConsulConfig(runtimeCfg *config.RuntimeConfig, logger hclog.Logger) (*co
 		// Disable serf WAN federation
 		cfg.SerfWANConfig = nil
 	}
+	
+	cfg.AdvertiseReconnectTimeout = runtimeCfg.AdvertiseReconnectTimeout
 
 	cfg.RPCAddr = runtimeCfg.RPCBindAddr
 	cfg.RPCAdvertise = runtimeCfg.RPCAdvertiseAddr

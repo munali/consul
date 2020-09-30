@@ -11,6 +11,7 @@ import (
 	"math/rand"
 	"net"
 	"os"
+	"regexp"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -36,6 +37,8 @@ const (
 	tagMagicByte uint8 = 255
 )
 
+const MaxNodeNameLength int = 128
+
 var (
 	// FeatureNotSupported is returned if a feature cannot be used
 	// due to an older protocol version being used.
@@ -45,6 +48,12 @@ var (
 func init() {
 	// Seed the random number generator
 	rand.Seed(time.Now().UnixNano())
+}
+
+// ReconnectTimeoutOverrider is an interface that can be implemented to allow overriding
+// the reconnect timeout for individual members.
+type ReconnectTimeoutOverrider interface {
+	ReconnectTimeout(member *Member, timeout time.Duration) time.Duration
 }
 
 // Serf is a single node that is part of a single cluster that gets
@@ -268,6 +277,9 @@ func Create(conf *Config) (*Serf, error) {
 	// Check that the meta data length is okay
 	if len(serf.encodeTags(conf.Tags)) > memberlist.MetaMaxSize {
 		return nil, fmt.Errorf("Encoded length of tags exceeds limit of %d bytes", memberlist.MetaMaxSize)
+	}
+	if err := serf.ValidateNodeNames(); err != nil {
+		return nil, err
 	}
 
 	// Check if serf member event coalescing is enabled
@@ -1571,6 +1583,10 @@ func (s *Serf) reap(old []*memberState, now time.Time, timeout time.Duration) []
 	for i := 0; i < n; i++ {
 		m := old[i]
 
+		if s.config.ReconnectTimeoutOverride != nil {
+			timeout = s.config.ReconnectTimeoutOverride.ReconnectTimeout(&m.Member, timeout)
+		}
+
 		// Skip if the timeout is not yet reached
 		if now.Sub(m.leaveTime) <= timeout {
 			continue
@@ -1883,4 +1899,21 @@ func (s *Serf) NumNodes() (numNodes int) {
 	s.memberLock.RUnlock()
 
 	return numNodes
+}
+
+// ValidateNodeNames verifies the NodeName contains
+// only alphanumeric, -, or . and is under 128 chracters
+func (s *Serf) ValidateNodeNames() error {
+	if s.config.ValidateNodeNames {
+		var InvalidNameRe = regexp.MustCompile(`[^A-Za-z0-9\-\.]+`)
+		if InvalidNameRe.MatchString(s.config.NodeName) {
+			return fmt.Errorf("NodeName contains invalid characters %v , Valid characters include "+
+				"all alpha-numerics and dashes and '.' ", s.config.NodeName)
+		}
+		if len(s.config.NodeName) > MaxNodeNameLength {
+			return fmt.Errorf("NodeName is %v characters. "+
+				"Valid length is between 1 and 128 characters", len(s.config.NodeName))
+		}
+	}
+	return nil
 }

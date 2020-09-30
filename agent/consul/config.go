@@ -218,6 +218,11 @@ type Config struct {
 	// the cluster until an explicit join is received. If this is set to
 	// true, we ignore the leave, and rejoin the cluster on start.
 	RejoinAfterLeave bool
+	
+	// AdvertiseReconnectTimeout is the duration after which this node should be
+	// assumed to not be returning and thus should be reaped within Serf. This
+	// can only be set for Client agents
+	AdvertiseReconnectTimeout time.Duration
 
 	// Build is a string that is gossiped around, and can be used to help
 	// operators track which versions are actively deployed

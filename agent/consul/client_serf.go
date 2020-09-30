@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/hashicorp/consul/agent/metadata"
 	"github.com/hashicorp/consul/agent/structs"
@@ -27,6 +28,7 @@ func (c *Client) setupSerf(conf *serf.Config, ch chan serf.Event, path string) (
 	conf.Tags["vsn_min"] = fmt.Sprintf("%d", ProtocolVersionMin)
 	conf.Tags["vsn_max"] = fmt.Sprintf("%d", ProtocolVersionMax)
 	conf.Tags["build"] = c.config.Build
+	conf.Tags["reconnect_timeout"] = c.config.AdvertiseReconnectTimeout.String()
 	if c.acls.ACLsEnabled() {
 		// we start in legacy mode and then transition to normal
 		// mode once we know the cluster can handle it.
@@ -65,7 +67,23 @@ func (c *Client) setupSerf(conf *serf.Config, ch chan serf.Event, path string) (
 
 	c.addEnterpriseSerfTags(conf.Tags)
 
+	conf.ReconnectTimeoutOverride = c
+
 	return serf.Create(conf)
+}
+
+func (c *Client) ReconnectTimeout(m *serf.Member, timeout time.Duration) time.Duration {
+	val, ok := m.Tags["reconnect_timeout"]
+	if !ok {
+		return timeout
+	}
+	newTimeout, err := time.ParseDuration(val)
+	if err != nil {
+		c.logger.Warn("Member is advertising a malformed reconnect_timeout", "member", m.Name, "reconnect_timeout", val)
+		return timeout
+	}
+
+	return newTimeout
 }
 
 // lanEventHandler is used to handle events from the lan Serf cluster

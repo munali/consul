@@ -6876,6 +6876,7 @@ func TestSanitize(t *testing.T) {
 		"AEInterval": "0s",
 		"AdvertiseAddrLAN": "",
 		"AdvertiseAddrWAN": "",
+		"AdvertiseReconnectTimeout": "0s",
 		"AutopilotCleanupDeadServers": false,
 		"AutopilotDisableUpgradeMigration": false,
 		"AutopilotLastContactThreshold": "0s",
