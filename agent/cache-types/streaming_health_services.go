@@ -1,6 +1,7 @@
 package cachetype
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/hashicorp/go-bexpr"
@@ -74,13 +75,16 @@ func (c *StreamingHealthServices) getMaterializedView(opts cache.FetchOptions, r
 	if err != nil {
 		return nil, err
 	}
+	ctx, cancel := context.WithCancel(context.TODO())
 	view := NewMaterializedViewFromFetch(ViewDeps{
 		State:   state,
 		Client:  c.client,
 		Logger:  c.logger,
 		Request: r,
+		Stop:    cancel,
+		Done:    ctx.Done(),
 	})
-	go view.run()
+	go view.run(ctx)
 	return view, nil
 }
 

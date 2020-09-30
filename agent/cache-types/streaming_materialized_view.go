@@ -85,9 +85,8 @@ type Request struct {
 type MaterializedView struct {
 	// Properties above the lock are immutable after the view is constructed in
 	// NewMaterializedViewFromFetch and must not be modified.
-	deps       ViewDeps
-	ctx        context.Context
-	cancelFunc func()
+	deps ViewDeps
+	ctx  context.Context
 
 	// l protects the mutable state - all fields below it must only be accessed
 	// while holding l.
@@ -105,6 +104,8 @@ type ViewDeps struct {
 	Client  StreamingClient
 	Logger  hclog.Logger
 	Request Request
+	Stop    func()
+	Done    <-chan struct{}
 }
 
 // StreamingClient is the interface we need from the gRPC client stub. Separate
@@ -121,14 +122,12 @@ type StreamingClient interface {
 // though Close must be called some other way to avoid leaking the goroutine and
 // memory.
 func NewMaterializedViewFromFetch(deps ViewDeps) *MaterializedView {
-	ctx, cancel := context.WithCancel(context.Background())
 	v := &MaterializedView{
-		deps:       deps,
-		state:      deps.State,
-		ctx:        ctx,
-		cancelFunc: cancel,
+		deps:  deps,
+		state: deps.State,
 		// Allow first retry without wait, this is important and we rely on it in
 		// tests.
+		// TODO: pass this in
 		retryWaiter: lib.NewRetryWaiter(1, 0, SubscribeBackoffMax,
 			lib.NewJitterRandomStagger(100)),
 	}
@@ -141,24 +140,22 @@ func NewMaterializedViewFromFetch(deps ViewDeps) *MaterializedView {
 func (v *MaterializedView) Close() error {
 	v.l.Lock()
 	defer v.l.Unlock()
-	if v.cancelFunc != nil {
-		v.cancelFunc()
-	}
+	v.deps.Stop()
 	return nil
 }
 
-func (v *MaterializedView) run() {
-	if v.ctx.Err() != nil {
+func (v *MaterializedView) run(ctx context.Context) {
+	if ctx.Err() != nil {
 		return
 	}
 
 	// Loop in case stream resets and we need to start over
 	for {
 		// Run a subscribe call until it fails
-		err := v.runSubscription()
+		err := v.runSubscription(ctx)
 		if err != nil {
 			// Check if the view closed
-			if v.ctx.Err() != nil {
+			if ctx.Err() != nil {
 				// Err doesn't matter and is likely just context cancelled
 				return
 			}
@@ -186,7 +183,7 @@ func (v *MaterializedView) run() {
 				"failure_count", failures)
 
 			select {
-			case <-v.ctx.Done():
+			case <-ctx.Done():
 				return
 			case <-waitCh:
 			}
@@ -198,8 +195,8 @@ func (v *MaterializedView) run() {
 
 // runSubscription opens a new subscribe streaming call to the servers and runs
 // for it's lifetime or until the view is closed.
-func (v *MaterializedView) runSubscription() error {
-	ctx, cancel := context.WithCancel(v.ctx)
+func (v *MaterializedView) runSubscription(ctx context.Context) error {
+	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
 	// Copy the request template
@@ -413,8 +410,8 @@ func (v *MaterializedView) Fetch(opts cache.FetchOptions) (cache.FetchResult, er
 			// Just return whatever we got originally, might still be empty
 			return result, nil
 
-		case <-v.ctx.Done():
-			return result, v.ctx.Err()
+		case <-v.deps.Done:
+			return result, context.Canceled
 		}
 	}
 }
