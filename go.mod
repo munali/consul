@@ -40,7 +40,7 @@ require (
 	github.com/hashicorp/go-hclog v0.14.1
 	github.com/hashicorp/go-immutable-radix v1.3.0 // indirect
 	github.com/hashicorp/go-memdb v1.2.1
-	github.com/hashicorp/go-msgpack v0.5.5
+	github.com/hashicorp/go-msgpack v1.1.5
 	github.com/hashicorp/go-multierror v1.1.0
 	github.com/hashicorp/go-raftchunking v0.6.1
 	github.com/hashicorp/go-retryablehttp v0.6.7 // indirect
@@ -55,7 +55,7 @@ require (
 	github.com/hashicorp/memberlist v0.2.2
 	github.com/hashicorp/net-rpc-msgpackrpc v0.0.0-20151116020338-a14192a58a69
 	github.com/hashicorp/raft v1.1.2
-	github.com/hashicorp/raft-boltdb v0.0.0-20171010151810-6e5ba93211ea
+	github.com/hashicorp/raft-boltdb v0.0.0-20191021154308-4207f1bf0617
 	github.com/hashicorp/serf v0.9.4
 	github.com/hashicorp/vault/api v1.0.5-0.20200717191844-f687267c8086
 	github.com/hashicorp/yamux v0.0.0-20181012175058-2f1d1f20f75d

@@ -286,8 +286,12 @@ func (a *Agent) LastUserEvent() *UserEvent {
 // msgpackHandleUserEvent is a shared handle for encoding/decoding of
 // messages for user events
 var msgpackHandleUserEvent = &codec.MsgpackHandle{
-	RawToString: true,
-	WriteExt:    true,
+	WriteExt: true,
+	BasicHandle: codec.BasicHandle{
+		DecodeOptions: codec.DecodeOptions{
+			RawToString: true,
+		},
+	},
 }
 
 // decodeMsgPackUserEvent is used to decode a MsgPack encoded object
