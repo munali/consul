@@ -6,6 +6,11 @@ import (
 	"os"
 	"time"
 
+	"github.com/hashicorp/memberlist"
+	"github.com/hashicorp/raft"
+	"github.com/hashicorp/serf/serf"
+	"golang.org/x/time/rate"
+
 	"github.com/hashicorp/consul/agent/checks"
 	"github.com/hashicorp/consul/agent/consul/autopilot"
 	"github.com/hashicorp/consul/agent/structs"
@@ -13,10 +18,6 @@ import (
 	"github.com/hashicorp/consul/tlsutil"
 	"github.com/hashicorp/consul/types"
 	"github.com/hashicorp/consul/version"
-	"github.com/hashicorp/memberlist"
-	"github.com/hashicorp/raft"
-	"github.com/hashicorp/serf/serf"
-	"golang.org/x/time/rate"
 )
 
 const (
@@ -470,8 +471,7 @@ type Config struct {
 	// AutoEncrypt.Sign requests.
 	AutoEncryptAllowTLS bool
 
-	// TODO: godoc, set this value from Agent
-	EnableGRPCServer bool
+	RPCConfig RPCConfig
 
 	// Embedded Consul Enterprise specific configuration
 	*EnterpriseConfig
@@ -638,4 +638,11 @@ func DefaultConfig() *Config {
 	conf.RaftConfig.SnapshotThreshold = 16384
 
 	return conf
+}
+
+// RPCConfig settings for the RPC server
+//
+// TODO: move many settings to this struct.
+type RPCConfig struct {
+	EnableStreaming bool
 }
