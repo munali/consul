@@ -260,6 +260,8 @@ type Config struct {
 
 	RPC RPC `mapstructure:"rpc"`
 
+	ServiceHealthStreamingBackend *bool `json:"service_health_streaming_backend" hcl:"service_health_streaming_backend" mapstructure:"service_health_streaming_backend"`
+
 	// This isn't used by Consul but we've documented a feature where users
 	// can deploy their snapshot agent configs alongside their Consul configs
 	// so we have a placeholder here so it can be parsed but this doesn't

@@ -1091,6 +1091,8 @@ func (b *Builder) Build() (rt RuntimeConfig, err error) {
 		Watches:                     c.Watches,
 	}
 
+	rt.ServiceHealthStreamingBackend = b.boolVal(c.ServiceHealthStreamingBackend)
+
 	if rt.Cache.EntryFetchMaxBurst <= 0 {
 		return RuntimeConfig{}, fmt.Errorf("cache.entry_fetch_max_burst must be strictly positive, was: %v", rt.Cache.EntryFetchMaxBurst)
 	}

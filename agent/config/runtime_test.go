@@ -5199,6 +5199,7 @@ func TestFullConfig(t *testing.T) {
 					}
 				}
 			],
+			"service_health_streaming_backend": true,
 			"session_ttl_min": "26627s",
 			"skip_leave_on_interrupt": true,
 			"start_join": [ "LR3hGDoG", "MwVpZ4Up" ],
@@ -5885,6 +5886,7 @@ func TestFullConfig(t *testing.T) {
 					}
 				}
 			]
+			service_health_streaming_backend = true
 			session_ttl_min = "26627s"
 			skip_leave_on_interrupt = true
 			start_join = [ "LR3hGDoG", "MwVpZ4Up" ]
@@ -6664,16 +6666,17 @@ func TestFullConfig(t *testing.T) {
 				},
 			},
 		},
-		SerfAdvertiseAddrLAN: tcpAddr("17.99.29.16:8301"),
-		SerfAdvertiseAddrWAN: tcpAddr("78.63.37.19:8302"),
-		SerfBindAddrLAN:      tcpAddr("99.43.63.15:8301"),
-		SerfBindAddrWAN:      tcpAddr("67.88.33.19:8302"),
-		SerfAllowedCIDRsLAN:  []net.IPNet{},
-		SerfAllowedCIDRsWAN:  []net.IPNet{},
-		SessionTTLMin:        26627 * time.Second,
-		SkipLeaveOnInt:       true,
-		StartJoinAddrsLAN:    []string{"LR3hGDoG", "MwVpZ4Up"},
-		StartJoinAddrsWAN:    []string{"EbFSc3nA", "kwXTh623"},
+		ServiceHealthStreamingBackend: true,
+		SerfAdvertiseAddrLAN:          tcpAddr("17.99.29.16:8301"),
+		SerfAdvertiseAddrWAN:          tcpAddr("78.63.37.19:8302"),
+		SerfBindAddrLAN:               tcpAddr("99.43.63.15:8301"),
+		SerfBindAddrWAN:               tcpAddr("67.88.33.19:8302"),
+		SerfAllowedCIDRsLAN:           []net.IPNet{},
+		SerfAllowedCIDRsWAN:           []net.IPNet{},
+		SessionTTLMin:                 26627 * time.Second,
+		SkipLeaveOnInt:                true,
+		StartJoinAddrsLAN:             []string{"LR3hGDoG", "MwVpZ4Up"},
+		StartJoinAddrsWAN:             []string{"EbFSc3nA", "kwXTh623"},
 		Telemetry: lib.TelemetryConfig{
 			CirconusAPIApp:                     "p4QOTe9j",
 			CirconusAPIToken:                   "E3j35V23",
@@ -7311,6 +7314,7 @@ func TestSanitize(t *testing.T) {
 		"SerfBindAddrWAN": "",
 		"SerfPortLAN": 0,
 		"SerfPortWAN": 0,
+		"ServiceHealthStreamingBackend": false,
 		"ServerMode": false,
 		"ServerName": "",
 		"ServerPort": 0,

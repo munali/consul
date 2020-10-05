@@ -1634,10 +1634,6 @@ Valid time units are 'ns', 'us' (or 'µs'), 'ms', 's', 'm', 'h'."
   - `rpc_rate` - Configures the RPC rate limiter on Consul _clients_ by setting the maximum request rate that this agent is allowed to make for RPC requests to Consul servers, in requests per second. Defaults to infinite, which disables rate limiting.
   - `rpc_max_burst` - The size of the token bucket used to recharge the RPC rate limiter on Consul _clients_. Defaults to 1000 tokens, and each token is good for a single RPC call to a Consul server. See https://en.wikipedia.org/wiki/Token_bucket for more details about how token bucket rate limiters operate.
 
-  - `rpc.enable_streaming` - Enable the gRPC subscribe endpoint on a Consul Server. All
-    Servers in all connected datacenters must have this enabled before any client can use
-    streaming.
-
   - `kv_max_value_size` - **(Advanced)** Configures the maximum number of bytes for a kv request body to the [`/v1/kv`](/api/kv) endpoint. This limit defaults to [raft's](https://github.com/hashicorp/raft) suggested max size (512KB). **Note that tuning these improperly can cause Consul to fail in unexpected ways**, it may potentially affect leadership stability and prevent timely heartbeat signals by increasing RPC IO duration. This option affects the txn endpoint too, but Consul 1.7.2 introduced `txn_max_req_len` which is the preferred way to set the limit for the txn endpoint. If both limits are set, the higher one takes precedence.
   - `txn_max_req_len` - **(Advanced)** Configures the maximum number of bytes for a transaction request body to the [`/v1/txn`](/api/txn) endpoint. This limit defaults to [raft's](https://github.com/hashicorp/raft) suggested max size (512KB). **Note that tuning these improperly can cause Consul to fail in unexpected ways**, it may potentially affect leadership stability and prevent timely heartbeat signals by increasing RPC IO duration.
 
@@ -1820,6 +1816,10 @@ Valid time units are 'ns', 'us' (or 'µs'), 'ms', 's', 'm', 'h'."
 
 - `retry_interval_wan` Equivalent to the [`-retry-interval-wan` command-line flag](#_retry_interval_wan).
 
+- `rpc.enable_streaming` - Enable the gRPC subscribe endpoint on a Consul Server. All
+  Servers in all connected datacenters must have this enabled before any client can use
+  `service_health_streaming_backend`. This setting will default to true in a future release of Consul.
+
 - `segment` <EnterpriseAlert inline /> - Equivalent to the [`-segment` command-line flag](#_segment).
 
 - `segments` <EnterpriseAlert inline /> - This is a list of nested objects
@@ -1844,6 +1844,12 @@ Valid time units are 'ns', 'us' (or 'µs'), 'ms', 's', 'm', 'h'."
 - `server` Equivalent to the [`-server` command-line flag](#_server).
 
 - `non_voting_server` - Equivalent to the [`-non-voting-server` command-line flag](#_non_voting_server).
+
+- `service_health_streaming_backend` - When enabled Consul client agents will use
+  streaming rpc to receive updates about service health, instead of the traditional
+  blocking queries. All servers must have `rpc.enable_streaming` enabled before any
+  client can use `service_health_streaming_backend`. At least one of `dns.use_cache`
+  or `http_config.use_cache` must be enabled, otherwise this setting has no effect.
 
 - `server_name` When provided, this overrides the [`node_name`](#_node)
   for the TLS certificate. It can be used to ensure that the certificate name matches
