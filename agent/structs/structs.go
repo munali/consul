@@ -19,6 +19,7 @@ import (
 	"github.com/hashicorp/serf/coordinate"
 	"github.com/mitchellh/hashstructure"
 
+	"github.com/hashicorp/consul/acl"
 	"github.com/hashicorp/consul/agent/cache"
 	"github.com/hashicorp/consul/api"
 	"github.com/hashicorp/consul/lib"
@@ -1574,6 +1575,23 @@ func (csn *CheckServiceNode) BestAddress(wan bool) (string, int) {
 	}
 
 	return addr, port
+}
+
+func (csn *CheckServiceNode) CanRead(authz acl.Authorizer) acl.EnforcementDecision {
+	if csn.Node == nil || csn.Service == nil {
+		return acl.Deny
+	}
+
+	// TODO: does this need to be the same one passed to ResolveTokenAndDefaultMeta?
+	var authzContext acl.AuthorizerContext
+	if authz.NodeRead(csn.Node.Node, &authzContext) != acl.Allow {
+		return acl.Deny
+	}
+
+	if authz.ServiceRead(csn.Service.Service, &authzContext) != acl.Allow {
+		return acl.Deny
+	}
+	return acl.Allow
 }
 
 type CheckServiceNodes []CheckServiceNode
